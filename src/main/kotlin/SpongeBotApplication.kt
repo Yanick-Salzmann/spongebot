@@ -239,7 +239,8 @@ class SpongeBotApplication(private val token: String) : ListenerAdapter() {
             }
         }
 
-        // Draw main text        graphics.color = Color.WHITE
+        // Draw main text
+        graphics.color = Color.WHITE
         graphics.drawString(text, x, yPosition)
     }
 
