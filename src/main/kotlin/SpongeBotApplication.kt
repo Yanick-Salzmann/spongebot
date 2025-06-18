@@ -10,15 +10,21 @@ import javax.imageio.ImageIO
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.Activity
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.events.session.ReadyEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import net.dv8tion.jda.api.utils.FileUpload
 import org.slf4j.LoggerFactory
+import service.AdvertisementService
+import service.BreakingNewsService
+import config.BotConfig
 
 class SpongeBotApplication(private val token: String) : ListenerAdapter() {
     private val logger = LoggerFactory.getLogger(SpongeBotApplication::class.java)
+    private val advertisementService = AdvertisementService()
+    private val breakingNewsService = BreakingNewsService()
 
     fun start() {
         try {
@@ -31,10 +37,12 @@ class SpongeBotApplication(private val token: String) : ListenerAdapter() {
         } catch (e: Exception) {
             logger.error("Failed to start bot", e)
         }
-    }
-
-    override fun onReady(event: ReadyEvent) {
+    }    override fun onReady(event: ReadyEvent) {
         logger.info("${event.jda.selfUser.name} is ready!")
+        logger.info("Advertisement probability: ${BotConfig.getAdvertisementProbability() * 100}%")
+        logger.info("Available advertisements: ${advertisementService.getAdvertisementCount()}")
+        logger.info("Breaking news probability: ${BotConfig.getBreakingNewsProbability() * 100}%")
+        logger.info("Available breaking news: ${breakingNewsService.getBreakingNewsCount()}")
 
         // Register slash command
         event.jda
@@ -255,5 +263,50 @@ class SpongeBotApplication(private val token: String) : ListenerAdapter() {
         } while (fontMetrics.stringWidth(text) > maxWidth && fontSize > 12)
 
         return fontSize + 1
+    }    override fun onMessageReceived(event: MessageReceivedEvent) {
+        // Ignore messages from bots (including ourselves)
+        if (event.author.isBot) {
+            return
+        }
+
+        val message = event.message
+        val channel = message.channel
+        val user = event.author
+
+        logger.debug("Received message from ${user.name} in channel ${channel.name}: ${message.contentDisplay}")
+        
+        // Check if we should show breaking news (lower probability, checked first)
+        val breakingNewsProbability = BotConfig.getBreakingNewsProbability()
+        if (breakingNewsService.shouldShowBreakingNews(breakingNewsProbability)) {
+            val breakingNews = breakingNewsService.getRandomBreakingNews()
+
+            logger.info("Showing breaking news to user ${user.name} in channel ${channel.name}")
+
+            channel.sendMessage(breakingNews).queue(
+                    {
+                        logger.debug("Successfully sent breaking news to channel ${channel.name}")
+                    },
+                    { error ->
+                        logger.error("Failed to send breaking news to channel ${channel.name}", error)
+                    }
+            )
+        } else {
+            // Check if we should show an advertisement (only if no breaking news was sent)
+            val advertisementProbability = BotConfig.getAdvertisementProbability()
+            if (advertisementService.shouldShowAdvertisement(advertisementProbability)) {
+                val advertisement = advertisementService.getRandomAdvertisement()
+
+                logger.info("Showing advertisement to user ${user.name} in channel ${channel.name}")
+
+                channel.sendMessage(advertisement).queue(
+                        {
+                            logger.debug("Successfully sent advertisement to channel ${channel.name}")
+                        },
+                        { error ->
+                            logger.error("Failed to send advertisement to channel ${channel.name}", error)
+                        }
+                )
+            }
+        }
     }
 }
